@@ -14,7 +14,6 @@ def format_to_one_decimal(val):
     suffix = ""
     num_str = val.replace(',', '')
     
-    # % 기호나 단위 기호(T, B, M) 처리
     if num_str.endswith('%'):
         suffix = '%'
         num_str = num_str[:-1]
@@ -23,7 +22,6 @@ def format_to_one_decimal(val):
         num_str = num_str[:-1]
     
     try:
-        # 부동소수점으로 변환 후 소수점 한자리 포맷팅
         return f"{float(num_str):.1f}{suffix}"
     except ValueError:
         return val
@@ -47,8 +45,6 @@ def get_finviz_data(ticker):
             return None
         
         data = {"Ticker": ticker.upper()}
-        
-        # 가져올 항목 정의 (요청하신 순서)
         target_metrics = [
             "Market Cap", "Sales", "Income", "P/E", "Forward P/E", 
             "PEG", "P/S", "EPS next 5Y", "Oper. Margin", "EPS Q/Q", "Sales Q/Q"
@@ -95,14 +91,14 @@ if user_ticker:
         for t in benchmarks:
             res = get_finviz_data(t)
             if res: all_data.append(res)
-            time.sleep(0.1)
+            time.sleep(0.05)
 
         if all_data:
             df = pd.DataFrame(all_data)
             df['cap_value'] = df['Market Cap'].apply(parse_market_cap)
             df = df.sort_values(by='cap_value', ascending=False).drop(columns=['cap_value'])
 
-            # 컬럼 설정 (오른쪽 정렬 포함)
+            # 컬럼 설정 (오른쪽 정렬)
             cols = df.columns.tolist()
             column_config = {col: st.column_config.Column(alignment="right") for col in cols if col != "Ticker"}
 
@@ -119,12 +115,25 @@ if user_ticker:
                 column_config=column_config
             )
             
-            # Monthly 차트 (너비 절반으로 축소)
-            st.markdown(f"### 📈 {user_ticker} Monthly Chart")
+            st.markdown("---")
+            
+            # 차트 영역 배치
             col1, col2 = st.columns([1, 1])
+            
             with col1:
-                chart_url = f"https://charts2.finviz.com/chart.ashx?t={user_ticker}&ty=c&ta=0&p=m&s=l"
-                st.image(chart_url, use_container_width=True)
+                st.subheader(f"📈 {user_ticker} Monthly Price Chart")
+                price_chart_url = f"https://charts2.finviz.com/chart.ashx?t={user_ticker}&ty=c&ta=0&p=m&s=l"
+                st.image(price_chart_url, use_container_width=True)
+            
+            with col2:
+                st.subheader(f"📊 {user_ticker} Fundamental Charts (Quarterly)")
+                # Finviz의 펀더멘탈 차트 URL 구조 활용
+                # i=eps (GAAP EPS), i=sales (Sales), i=shares (Shares Outstanding)
+                base_f_url = f"https://finviz.com/chart.ashx?t={user_ticker}&ty=q&s=m"
+                
+                st.image(f"{base_f_url}&i=eps", caption="GAAP EPS", use_container_width=True)
+                st.image(f"{base_f_url}&i=sales", caption="Sales", use_container_width=True)
+                st.image(f"{base_f_url}&i=shares", caption="Shares Outstanding", use_container_width=True)
             
             st.markdown(f"---")
             st.markdown(f"🔗 [Finviz에서 {user_ticker} 상세 정보 보기](https://finviz.com/quote.ashx?t={user_ticker})")
