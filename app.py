@@ -7,6 +7,25 @@ import time
 # 페이지 설정
 st.set_page_config(page_title="Finviz Stock Comparison", layout="wide")
 
+# 숫자를 소수점 한자리로 포맷팅하는 함수
+def format_to_one_decimal(val):
+    if not val or val == '-':
+        return val
+    suffix = ""
+    num_str = val.replace(',', '')
+    
+    if num_str.endswith('%'):
+        suffix = '%'
+        num_str = num_str[:-1]
+    elif num_str[-1].upper() in ['T', 'B', 'M', 'K'] and len(num_str) > 1:
+        suffix = num_str[-1].upper()
+        num_str = num_str[:-1]
+    
+    try:
+        return f"{float(num_str):.1f}{suffix}"
+    except ValueError:
+        return val
+
 # 1. Finviz 데이터 스크래핑 함수
 @st.cache_data(ttl=3600)  # 1시간 동안 캐시 유지
 def get_finviz_data(ticker):
@@ -26,8 +45,16 @@ def get_finviz_data(ticker):
         if not table:
             return None
         
-        rows = table.find_all('tr')
         data = {"Ticker": ticker.upper()}
+        
+        # 종목명(Company Name) 추출
+        company_name = "-"
+        title_table = soup.find('table', class_='fullview-title')
+        if title_table:
+            name_link = title_table.find('a', class_='tab-link')
+            if name_link:
+                company_name = name_link.text.strip()
+        data["Company"] = company_name
         
         # 찾고자 하는 항목 매핑
         target_metrics = {
@@ -49,7 +76,7 @@ def get_finviz_data(ticker):
             label = cells[i].text.strip()
             value = cells[i+1].text.strip()
             if label in target_metrics:
-                data[label] = value
+                data[label] = format_to_one_decimal(value)
                 
         return data
     except Exception as e:
@@ -93,6 +120,15 @@ if st.button("데이터 불러오기") or user_ticker:
         if all_data:
             df = pd.DataFrame(all_data)
             
+            # 컬럼 순서 재배치
+            columns_order = [
+                "Ticker", "Company", "Market Cap", "Sales", "Income", 
+                "P/E", "Forward P/E", "PEG", "P/S", "EPS next 5Y", 
+                "Oper. Margin", "EPS Q/Q", "Sales Q/Q"
+            ]
+            # 존재하는 컬럼만 선택 (만약의 에러 방지)
+            df = df[[c for c in columns_order if c in df.columns]]
+
             # 시가총액 기준 정렬을 위한 임시 컬럼 생성
             df['cap_value'] = df['Market Cap'].apply(parse_market_cap)
             df = df.sort_values(by='cap_value', ascending=False).drop(columns=['cap_value'])
@@ -110,10 +146,15 @@ if st.button("데이터 불러오기") or user_ticker:
                 hide_index=True
             )
             
+            # Monthly 차트 디스플레이
+            if user_ticker:
+                st.markdown(f"### 📈 {user_ticker} Monthly Chart")
+                chart_url = f"https://charts2.finviz.com/chart.ashx?t={user_ticker}&ty=c&ta=0&p=m&s=l"
+                st.image(chart_url, use_container_width=True)
+            
             # 하단 링크
             if user_ticker:
                 st.markdown(f"---")
                 st.markdown(f"🔗 [Finviz에서 {user_ticker} 상세 정보 보기](https://finviz.com/quote.ashx?t={user_ticker})")
         else:
             st.error("데이터를 불러오지 못했습니다. 티커가 정확한지 확인해주세요.")
-
