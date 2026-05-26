@@ -91,8 +91,8 @@ if user_ticker:
         for t in benchmarks:
             res = get_finviz_data(t)
             if res: all_data.append(res)
-            time.sleep(0.05)
-
+            time.sleep(0.1) # 과도한 요청 방지
+            
         if all_data:
             df = pd.DataFrame(all_data)
             df['cap_value'] = df['Market Cap'].apply(parse_market_cap)
@@ -118,24 +118,27 @@ if user_ticker:
             st.markdown("---")
             
             # 차트 영역 배치
-            col1, col2 = st.columns([1, 1])
+            col1, col2 = st.columns([1, 1]) # 1:1 비율로 두 개의 컬럼 생성
             
             with col1:
                 st.subheader(f"📈 {user_ticker} Monthly Price Chart")
+                # 월봉 주가 차트 URL
                 price_chart_url = f"https://charts2.finviz.com/chart.ashx?t={user_ticker}&ty=c&ta=0&p=m&s=l"
                 st.image(price_chart_url, use_container_width=True)
             
             with col2:
                 st.subheader(f"📊 {user_ticker} Fundamental Charts (Quarterly)")
-                # Finviz의 펀더멘탈 차트 URL 구조 활용
+                # Finviz의 펀더멘탈 차트 URL 구조 활용 (charts2.finviz.com 사용)
+                # ty=q (Quarterly), ta=0 (No Technical Analysis), p=m (Period Monthly), s=l (Scale Logarithmic)
                 # i=eps (GAAP EPS), i=sales (Sales), i=shares (Shares Outstanding)
-                base_f_url = f"https://finviz.com/chart.ashx?t={user_ticker}&ty=q&s=m"
+                base_fundamental_chart_url = f"https://charts2.finviz.com/chart.ashx?t={user_ticker}&ty=q&ta=0&p=m&s=l"
                 
-                st.image(f"{base_f_url}&i=eps", caption="GAAP EPS", use_container_width=True)
-                st.image(f"{base_f_url}&i=sales", caption="Sales", use_container_width=True)
-                st.image(f"{base_f_url}&i=shares", caption="Shares Outstanding", use_container_width=True)
+                st.image(f"{base_fundamental_chart_url}&i=eps", caption="GAAP EPS", use_container_width=True)
+                st.image(f"{base_fundamental_chart_url}&i=sales", caption="Sales", use_container_width=True)
+                st.image(f"{base_fundamental_chart_url}&i=shares", caption="Shares Outstanding", use_container_width=True)
             
             st.markdown(f"---")
             st.markdown(f"🔗 [Finviz에서 {user_ticker} 상세 정보 보기](https://finviz.com/quote.ashx?t={user_ticker})")
         else:
             st.error("데이터를 가져오지 못했습니다. 티커를 확인해 주세요.")
+
