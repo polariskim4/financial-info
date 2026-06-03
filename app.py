@@ -14,6 +14,7 @@ def format_to_one_decimal(val):
         return "-"
     
     suffix = ""
+    # 문자열로 변환 후 콤마와 공백 제거
     num_str = str(val).replace(',', '').strip()
     
     # % 기호나 단위 기호(T, B, M, K) 처리
@@ -25,6 +26,7 @@ def format_to_one_decimal(val):
         num_str = num_str[:-1]
     
     try:
+        # 부동소수점으로 변환 후 소수점 한자리 포맷팅
         return f"{float(num_str):.1f}{suffix}"
     except ValueError:
         return val
@@ -33,7 +35,6 @@ def format_to_one_decimal(val):
 @st.cache_data(ttl=3600)
 def get_finviz_data(ticker):
     url = f"https://finviz.com/quote.ashx?t={ticker.upper()}"
-    # 최신 브라우저 User-Agent 설정 (차단 방지)
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
@@ -44,7 +45,6 @@ def get_finviz_data(ticker):
             return None
         
         soup = BeautifulSoup(response.text, 'html.parser')
-        # Finviz의 핵심 지표가 담긴 테이블 탐색
         table = soup.find('table', class_='snapshot-table2')
         if not table:
             return None
@@ -57,20 +57,19 @@ def get_finviz_data(ticker):
             "PEG", "P/S", "EPS next 5Y", "Oper. Margin", "ROIC", "EPS Q/Q", "Sales Q/Q"
         ]
         
-        # 핵심 수정: Finviz는 'ROI'라는 라벨을 사용합니다.
-        # 이를 UI에 표시할 'ROIC'로 매핑합니다.
+        # 핵심 수정: Finviz 내부 라벨 'ROI'를 'ROIC'로 매핑
         label_mapping = {"ROIC": "ROI"}
         
         cells = table.find_all('td')
         temp_dict = {}
-        # 테이블의 td들을 순회하며 라벨-값 쌍을 저장
+        # 라벨(td)과 값(td)이 쌍으로 존재하므로 2개씩 건너뛰며 읽음
         for i in range(0, len(cells), 2):
             label = cells[i].text.strip()
             value = cells[i+1].text.strip()
             temp_dict[label] = value
             
         for metric in target_metrics:
-            # 매핑 딕셔너리에 있으면 해당 라벨(ROI)로 찾고, 없으면 원래 이름(ROIC 등)으로 검색
+            # 매핑된 라벨이 있으면 해당 라벨(ROI)로 검색
             finviz_label = label_mapping.get(metric, metric)
             raw_value = temp_dict.get(finviz_label, "-")
             data[metric] = format_to_one_decimal(raw_value)
@@ -91,6 +90,7 @@ def get_yfinance_metrics(ticker):
         fin = stock.financials.T
         if not hist.empty and 'Net Income' in fin.columns:
             avg_price = hist['Close'].mean()
+            # 최근 3개년 순이익 평균
             avg_net_income = fin['Net Income'].head(3).mean() 
             shares = stock.info.get('sharesOutstanding')
             
@@ -117,7 +117,7 @@ def parse_market_cap(val):
 # UI 구성
 st.title("📊 Tech Stock Benchmark Comparison")
 
-user_ticker = st.text_input("비교할 종목 티커를 입력하세요:", placeholder="예: AAPL, TSLA").upper()
+user_ticker = st.text_input("비교할 종목 티커를 입력하세요:", placeholder="예: AAPL, NVDA").upper()
 
 benchmarks = ["NVDA", "GOOG", "MSFT", "META", "NFLX", "ANET", "MRVL", "CRDO", "VRT", "VST", "SOFI", "ORCL"]
 if user_ticker and user_ticker not in benchmarks:
@@ -138,6 +138,7 @@ if user_ticker:
         if all_data:
             df = pd.DataFrame(all_data)
             
+            # 컬럼 순서 설정
             ordered_cols = [
                 "Ticker", "Market Cap", "Sales", "Income", 
                 "P/E", "3yr avg P/E", "Forward P/E", 
@@ -146,6 +147,7 @@ if user_ticker:
             ]
             df = df[[c for c in ordered_cols if c in df.columns]]
 
+            # 시가총액 정렬
             df['cap_value'] = df['Market Cap'].apply(parse_market_cap)
             df = df.sort_values(by='cap_value', ascending=False).drop(columns=['cap_value'])
 
