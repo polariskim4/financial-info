@@ -14,8 +14,10 @@ def format_to_one_decimal(val):
         return "-"
     
     suffix = ""
+    # 문자열 처리: 콤마와 공백 제거
     num_str = str(val).replace(',', '').strip()
     
+    # % 기호나 단위 기호(T, B, M, K) 처리
     if num_str.endswith('%'):
         suffix = '%'
         num_str = num_str[:-1]
@@ -24,6 +26,7 @@ def format_to_one_decimal(val):
         num_str = num_str[:-1]
     
     try:
+        # 부동소수점으로 변환 후 소수점 한자리 포맷팅
         return f"{float(num_str):.1f}{suffix}"
     except ValueError:
         return val
@@ -48,22 +51,24 @@ def get_finviz_data(ticker):
         
         data = {"Ticker": ticker.upper()}
         
-        # 핵심 매핑 로직: Finviz 표의 'ROI'를 우리 앱의 'ROIC'로 가져옵니다.
+        # 핵심 해결책: Finviz 웹사이트 라벨은 'ROI'입니다. 이를 우리 앱의 'ROIC'로 매핑합니다.
         label_mapping = {"ROIC": "ROI"}
         
-        # 가져올 전체 지표 순서 (사용자 요청 반영)
+        # 가져올 항목 정의
         target_metrics = [
             "Market Cap", "Sales", "Income", "P/E", "Forward P/E", 
             "PEG", "P/S", "EPS next 5Y", "Oper. Margin", "ROIC", "EPS Q/Q", "Sales Q/Q"
         ]
         
         cells = table.find_all('td')
+        # Finviz 테이블은 라벨(td)과 값(td)이 번갈아 나옵니다.
         temp_dict = {cells[i].text.strip(): cells[i+1].text.strip() for i in range(0, len(cells), 2)}
             
         for metric in target_metrics:
+            # 매핑 딕셔너리에 정의된 이름이 있으면 그 이름(ROI)으로 찾고, 없으면 원래 이름으로 찾습니다.
             finviz_label = label_mapping.get(metric, metric)
-            raw_val = temp_dict.get(finviz_label, "-")
-            data[metric] = format_to_one_decimal(raw_val)
+            raw_value = temp_dict.get(finviz_label, "-")
+            data[metric] = format_to_one_decimal(raw_value)
                 
         return data
     except Exception:
@@ -75,15 +80,21 @@ def get_yfinance_metrics(ticker):
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period="3y")
+        if stock.financials is None or stock.financials.empty:
+            return {"3yr avg P/E": "-"}
+            
         fin = stock.financials.T
-        if not hist.empty and not fin.empty and 'Net Income' in fin.columns:
+        if not hist.empty and 'Net Income' in fin.columns:
             avg_price = hist['Close'].mean()
-            avg_net_income = fin['Net Income'].head(3).mean()
+            # 최근 3개년 순이익 평균 계산
+            avg_net_income = fin['Net Income'].head(3).mean() 
             shares = stock.info.get('sharesOutstanding')
-            if avg_net_income > 0 and shares:
+            
+            if avg_net_income and shares and avg_net_income > 0:
                 eps_avg = avg_net_income / shares
                 return {"3yr avg P/E": f"{avg_price / eps_avg:.1f}"}
-    except: pass
+    except Exception:
+        pass
     return {"3yr avg P/E": "-"}
 
 # 시가총액 정렬용 파서
@@ -99,14 +110,14 @@ def parse_market_cap(val):
         return float(num_part) * multiplier
     except: return 0
 
-# --- UI 구성 ---
+# --- UI 구성 섹션 ---
 st.title("📊 Tech Stock Benchmark Comparison")
 
-# DuplicateElementId 에러 방지를 위해 고유 key 부여
+# DuplicateElementId 해결: unique key를 부여했습니다.
 user_ticker = st.text_input(
     "비교할 종목 티커를 입력하세요:", 
-    placeholder="예: AAPL, NVDA", 
-    key="stock_ticker_input"
+    placeholder="예: AAPL, NVDA",
+    key="stock_input_ticker_field" 
 ).upper()
 
 benchmarks = ["NVDA", "GOOG", "MSFT", "META", "NFLX", "ANET", "MRVL", "CRDO", "VRT", "VST", "SOFI", "ORCL"]
@@ -114,11 +125,12 @@ if user_ticker and user_ticker not in benchmarks:
     benchmarks.append(user_ticker)
 
 if user_ticker:
-    with st.spinner('데이터를 분석 중...'):
+    with st.spinner('데이터를 불러오는 중...'):
         all_data = []
         for t in benchmarks:
             fv_data = get_finviz_data(t)
             yf_data = get_yfinance_metrics(t)
+            
             if fv_data:
                 combined = {**fv_data, **yf_data}
                 all_data.append(combined)
@@ -127,19 +139,20 @@ if user_ticker:
         if all_data:
             df = pd.DataFrame(all_data)
             
-            # 사용자 요청에 따른 컬럼 순서 재배치
-            cols = [
-                'Ticker', 'Market Cap', 'Sales', 'Income', 'P/E', '3yr avg P/E', 
-                'Forward P/E', 'PEG', 'P/S', 'EPS next 5Y', 'Oper. Margin', 
-                'ROIC', 'EPS Q/Q', 'Sales Q/Q'
+            # 컬럼 순서 설정
+            ordered_cols = [
+                "Ticker", "Market Cap", "Sales", "Income", 
+                "P/E", "3yr avg P/E", "Forward P/E", 
+                "PEG", "P/S", "EPS next 5Y", 
+                "Oper. Margin", "ROIC", "EPS Q/Q", "Sales Q/Q"
             ]
-            df = df[[c for c in cols if c in df.columns]]
+            df = df[[c for c in ordered_cols if c in df.columns]]
 
-            # 시가총액 기준 정렬
+            # 시가총액 기준 내림차순 정렬
             df['cap_value'] = df['Market Cap'].apply(parse_market_cap)
             df = df.sort_values(by='cap_value', ascending=False).drop(columns=['cap_value'])
 
-            # 테이블 스타일 및 최신 width 설정
+            # 스타일 설정 및 컬럼 정렬 (width='stretch' 적용)
             column_config = {col: st.column_config.Column(alignment="right") for col in df.columns if col != "Ticker"}
 
             def highlight_inserted(row):
@@ -149,12 +162,12 @@ if user_ticker:
 
             st.dataframe(
                 df.style.apply(highlight_inserted, axis=1),
-                width="stretch", # 최신 Streamlit 규격 적용
+                width="stretch", 
                 hide_index=True,
                 column_config=column_config
             )
             
-            # 차트 섹션
+            # 하단 차트 섹션 (width='stretch' 적용)
             st.markdown(f"### 📈 {user_ticker} Monthly Chart")
             col1, _ = st.columns([2, 1])
             with col1:
@@ -163,3 +176,5 @@ if user_ticker:
             
             st.markdown(f"---")
             st.caption(f"🔗 [Finviz에서 {user_ticker} 상세 정보 보기](https://finviz.com/quote.ashx?t={user_ticker})")
+        else:
+            st.error("데이터를 가져오지 못했습니다. 티커가 올바른지 확인해 주세요.")
