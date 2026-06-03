@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import time
 import yfinance as yf
 
-# 페이지 설정
+# 1. 페이지 설정
 st.set_page_config(page_title="Finviz Stock Comparison", layout="wide")
 
 # 숫자를 소수점 한자리로 포맷팅하는 함수
@@ -31,7 +31,7 @@ def format_to_one_decimal(val):
     except ValueError:
         return val
 
-# 1. Finviz 데이터 스크래핑 함수
+# 2. Finviz 데이터 스크래핑 함수 (핵심 수정 지점)
 @st.cache_data(ttl=3600)
 def get_finviz_data(ticker):
     url = f"https://finviz.com/quote.ashx?t={ticker.upper()}"
@@ -49,32 +49,39 @@ def get_finviz_data(ticker):
         if not table:
             return None
         
+        # 전체 셀 추출 및 딕셔너리화
+        cells = table.find_all('td')
+        temp_dict = {cells[i].text.strip(): cells[i+1].text.strip() for i in range(0, len(cells), 2)}
+        
+        # 데이터 구성
         data = {"Ticker": ticker.upper()}
         
-        # 핵심 해결책: Finviz 웹사이트 라벨은 'ROI'입니다. 이를 우리 앱의 'ROIC'로 매핑합니다.
-        label_mapping = {"ROIC": "ROI"}
-        
-        # 가져올 항목 정의
-        target_metrics = [
-            "Market Cap", "Sales", "Income", "P/E", "Forward P/E", 
-            "PEG", "P/S", "EPS next 5Y", "Oper. Margin", "ROIC", "EPS Q/Q", "Sales Q/Q"
-        ]
-        
-        cells = table.find_all('td')
-        # Finviz 테이블은 라벨(td)과 값(td)이 번갈아 나옵니다.
-        temp_dict = {cells[i].text.strip(): cells[i+1].text.strip() for i in range(0, len(cells), 2)}
+        # [핵심] 매핑 정의: Finviz의 'ROI'를 우리 앱의 'ROIC'로 가져옵니다.
+        # Finviz 표에 'ROIC'라는 글자는 존재하지 않기 때문에 'ROI'로 불러와야 합니다.
+        target_metrics = {
+            "Market Cap": "Market Cap",
+            "Sales": "Sales",
+            "Income": "Income",
+            "P/E": "P/E",
+            "Forward P/E": "Forward P/E",
+            "PEG": "PEG",
+            "P/S": "P/S",
+            "EPS next 5Y": "EPS next 5Y",
+            "Oper. Margin": "Oper. Margin",
+            "ROIC": "ROI",  # <--- 이 부분이 해결의 열쇠입니다.
+            "EPS Q/Q": "EPS Q/Q",
+            "Sales Q/Q": "Sales Q/Q"
+        }
             
-        for metric in target_metrics:
-            # 매핑 딕셔너리에 정의된 이름이 있으면 그 이름(ROI)으로 찾고, 없으면 원래 이름으로 찾습니다.
-            finviz_label = label_mapping.get(metric, metric)
-            raw_value = temp_dict.get(finviz_label, "-")
-            data[metric] = format_to_one_decimal(raw_value)
+        for display_name, finviz_label in target_metrics.items():
+            raw_val = temp_dict.get(finviz_label, "-")
+            data[display_name] = format_to_one_decimal(raw_val)
                 
         return data
     except Exception:
         return None
 
-# 2. yfinance를 이용한 3년 평균 P/E 계산 함수
+# 3. yfinance를 이용한 3년 평균 P/E 계산 함수
 @st.cache_data(ttl=3600)
 def get_yfinance_metrics(ticker):
     try:
@@ -86,7 +93,6 @@ def get_yfinance_metrics(ticker):
         fin = stock.financials.T
         if not hist.empty and 'Net Income' in fin.columns:
             avg_price = hist['Close'].mean()
-            # 최근 3개년 순이익 평균 계산
             avg_net_income = fin['Net Income'].head(3).mean() 
             shares = stock.info.get('sharesOutstanding')
             
@@ -113,11 +119,11 @@ def parse_market_cap(val):
 # --- UI 구성 섹션 ---
 st.title("📊 Tech Stock Benchmark Comparison")
 
-# DuplicateElementId 해결: unique key를 부여했습니다.
+# [수정] DuplicateElementId 방지를 위해 고유 key 추가
 user_ticker = st.text_input(
     "비교할 종목 티커를 입력하세요:", 
     placeholder="예: AAPL, NVDA",
-    key="stock_input_ticker_field" 
+    key="unique_stock_ticker_input"
 ).upper()
 
 benchmarks = ["NVDA", "GOOG", "MSFT", "META", "NFLX", "ANET", "MRVL", "CRDO", "VRT", "VST", "SOFI", "ORCL"]
@@ -148,11 +154,11 @@ if user_ticker:
             ]
             df = df[[c for c in ordered_cols if c in df.columns]]
 
-            # 시가총액 기준 내림차순 정렬
+            # 시가총액 기준 정렬
             df['cap_value'] = df['Market Cap'].apply(parse_market_cap)
             df = df.sort_values(by='cap_value', ascending=False).drop(columns=['cap_value'])
 
-            # 스타일 설정 및 컬럼 정렬 (width='stretch' 적용)
+            # [수정] 최신 Streamlit 규격: width="stretch" 사용
             column_config = {col: st.column_config.Column(alignment="right") for col in df.columns if col != "Ticker"}
 
             def highlight_inserted(row):
@@ -167,7 +173,7 @@ if user_ticker:
                 column_config=column_config
             )
             
-            # 하단 차트 섹션 (width='stretch' 적용)
+            # [수정] 차트 섹션: width="stretch" 사용
             st.markdown(f"### 📈 {user_ticker} Monthly Chart")
             col1, _ = st.columns([2, 1])
             with col1:
