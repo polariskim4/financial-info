@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import time
+import yfinance as yf
 
 # 페이지 설정
 st.set_page_config(page_title="Finviz Stock Comparison", layout="wide")
@@ -49,19 +50,18 @@ def get_finviz_data(ticker):
         data = {"Ticker": ticker.upper()}
         
         # 가져올 항목 정의 및 순서 변경
-        # ROIC는 Finviz 내 'ROI' 항목을 참조하도록 설정
         target_metrics = [
             "Market Cap", "Sales", "Income", 
-            "P/E", "3yr avg P/E", "Forward P/E", # P/E와 Forward P/E 사이에 3yr avg P/E 추가
+            "P/E", "Forward P/E", 
             "PEG", "P/S", "EPS next 5Y", 
-            "Oper. Margin", "ROIC", "EPS Q/Q", "Sales Q/Q" # Oper. Margin과 EPS Q/Q 사이에 ROIC 추가
+            "Oper. Margin", "ROIC", "EPS Q/Q", "Sales Q/Q"
         ]
         
         # Finviz 테이블의 key-value 매핑 (Finviz는 ROI라는 명칭 사용)
         label_mapping = {
             "ROIC": "ROI"
         }
-        
+
         cells = table.find_all('td')
         temp_dict = {}
         for i in range(0, len(cells), 2):
@@ -77,6 +77,27 @@ def get_finviz_data(ticker):
         return data
     except Exception:
         return None
+
+# 2. yfinance를 이용한 3년 평균 P/E 계산 함수
+@st.cache_data(ttl=3600)
+def get_yfinance_metrics(ticker):
+    try:
+        stock = yf.Ticker(ticker)
+        # 3년치 히스토리 및 재무제표
+        hist = stock.history(period="3y")
+        fin = stock.financials.T
+        
+        if not hist.empty and 'Net Income' in fin.columns:
+            avg_price = hist['Close'].mean()
+            avg_net_income = fin['Net Income'].mean()
+            shares = stock.info.get('sharesOutstanding')
+            
+            if avg_net_income and shares and avg_net_income > 0:
+                eps = avg_net_income / shares
+                return {"3yr avg P/E": f"{avg_price / eps:.1f}"}
+    except Exception:
+        pass
+    return {"3yr avg P/E": "-"}
 
 # 시가총액 정렬용 파서
 def parse_market_cap(val):
@@ -103,12 +124,29 @@ if user_ticker:
     with st.spinner('데이터를 불러오는 중...'):
         all_data = []
         for t in benchmarks:
-            res = get_finviz_data(t)
-            if res: all_data.append(res)
+            # Finviz 데이터와 yfinance 데이터를 각각 가져옴
+            fv_data = get_finviz_data(t)
+            yf_data = get_yfinance_metrics(t)
+            
+            if fv_data:
+                # 두 데이터를 병합
+                combined = {**fv_data, **yf_data}
+                all_data.append(combined)
             time.sleep(0.1)
 
         if all_data:
             df = pd.DataFrame(all_data)
+            
+            # 컬럼 순서 재정렬 (사용자 요청 순서)
+            ordered_cols = [
+                "Ticker", "Market Cap", "Sales", "Income", 
+                "P/E", "3yr avg P/E", "Forward P/E", 
+                "PEG", "P/S", "EPS next 5Y", 
+                "Oper. Margin", "ROIC", "EPS Q/Q", "Sales Q/Q"
+            ]
+            # 존재하는 컬럼만 필터링하여 순서 적용
+            df = df[[c for c in ordered_cols if c in df.columns]]
+
             df['cap_value'] = df['Market Cap'].apply(parse_market_cap)
             df = df.sort_values(by='cap_value', ascending=False).drop(columns=['cap_value'])
 
