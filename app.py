@@ -48,11 +48,19 @@ def get_finviz_data(ticker):
         
         data = {"Ticker": ticker.upper()}
         
-        # 가져올 항목 정의 (요청하신 순서)
+        # 가져올 항목 정의 및 순서 변경
+        # ROIC는 Finviz 내 'ROI' 항목을 참조하도록 설정
         target_metrics = [
-            "Market Cap", "Sales", "Income", "P/E", "Forward P/E", 
-            "PEG", "P/S", "EPS next 5Y", "Oper. Margin", "EPS Q/Q", "Sales Q/Q"
+            "Market Cap", "Sales", "Income", 
+            "P/E", "3yr avg P/E", "Forward P/E", # P/E와 Forward P/E 사이에 3yr avg P/E 추가
+            "PEG", "P/S", "EPS next 5Y", 
+            "Oper. Margin", "ROIC", "EPS Q/Q", "Sales Q/Q" # Oper. Margin과 EPS Q/Q 사이에 ROIC 추가
         ]
+        
+        # Finviz 테이블의 key-value 매핑 (Finviz는 ROI라는 명칭 사용)
+        label_mapping = {
+            "ROIC": "ROI"
+        }
         
         cells = table.find_all('td')
         temp_dict = {}
@@ -62,7 +70,9 @@ def get_finviz_data(ticker):
             temp_dict[label] = value
             
         for metric in target_metrics:
-            data[metric] = format_to_one_decimal(temp_dict.get(metric, "-"))
+            # 매핑된 라벨이 있으면 해당 라벨로 찾고, 없으면 그대로 검색
+            finviz_label = label_mapping.get(metric, metric)
+            data[metric] = format_to_one_decimal(temp_dict.get(finviz_label, "-"))
                 
         return data
     except Exception:
