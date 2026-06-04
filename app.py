@@ -62,7 +62,7 @@ def get_finviz_data(ticker):
             "P/S": "P/S",
             "EPS next 5Y": "EPS next 5Y",
             "Oper. Margin": "Oper. Margin",
-            "ROIC": "ROI", # Finviz에서는 ROI로 표시됨
+            "ROIC": "ROIC", 
             "EPS Q/Q": "EPS Q/Q",
             "Sales Q/Q": "Sales Q/Q"
         }
